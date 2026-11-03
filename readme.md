@@ -151,15 +151,15 @@ hammer:
       - name: create_post
         weight: 40                  # Probability weight for this flow before normalization
         queries:
-          - "INSERT INTO posts (user_id, title, body) VALUES ({{.UserID}}, '{{Word}}', '{{Sentence 10}}')"
+          - "INSERT INTO posts (user_id, body) VALUES ({{.UserID}}, '{{Sentence 10}}') /*action='new_post'*/"
       - name: create_comment
         weight: 40
         queries:
-          - "INSERT INTO comments (post_id, user_id, body) VALUES (1, {{.UserID}}, '{{Sentence 5}}')"
+          - "INSERT INTO comments (post_id, user_id, body) VALUES (1, {{.UserID}}, '{{Sentence 5}}') /*action='new_comment'*/"
       - name: delete_comment
         weight: 20
         queries:
-          - "DELETE FROM comments WHERE user_id = {{.UserID}} LIMIT 1"
+          - "DELETE FROM comments WHERE user_id = {{.UserID}} LIMIT 1 /*action='remove_comment'*/"
 
   postgres:
     # Same structure — separate config per database type
@@ -169,7 +169,7 @@ hammer:
       - name: create_post
         weight: 1
         queries:
-          - "INSERT INTO posts (user_id, title, body) VALUES ({{.UserID}}, '{{Word}}', '{{Sentence 10}}')"
+          - "INSERT INTO posts (user_id, body) VALUES ({{.UserID}}, '{{Sentence 10}}') /*action='new_post'*/"
 ```
 
 Use `--config` to specify a custom config file path:
@@ -227,7 +227,7 @@ The tables created on initialization:
 
 ```
 users             (id, name, email, created_at)
-posts             (id, user_id, title, body, created_at)
+posts             (id, user_id, body, created_at)
 comments          (id, post_id, user_id, body, created_at)
 tags              (id, name)
 post_tags         (post_id, tag_id)

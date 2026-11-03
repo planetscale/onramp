@@ -31,7 +31,6 @@ var (
 // String pools: generated once at init, cycled at insert time.
 var (
 	namePool    [poolSize]string
-	titlePool   [poolSize]string
 	bodyPool    [poolSize]string
 	commentPool [poolSize]string
 )
@@ -42,7 +41,6 @@ var uniqueSeq atomic.Uint64
 func init() {
 	for i := range poolSize {
 		namePool[i] = gofakeit.Name()
-		titlePool[i] = gofakeit.Sentence(20)
 		bodyPool[i] = gofakeit.Paragraph(1, 5, 5, " ")
 		commentPool[i] = gofakeit.Sentence(50)
 	}
@@ -222,7 +220,7 @@ func fillBySize(ctx context.Context, sqlDB *sql.DB, provider string, targetBytes
 func insertBatch(ctx context.Context, sqlDB *sql.DB, n int) (int, error) {
 	total := 0
 	// Comments
-	q := fmt.Sprintf("INSERT INTO comments (post_id, user_id, body) SELECT post_id, user_id, body FROM comments LIMIT %d", n)
+	q := WithAction(fmt.Sprintf("INSERT INTO comments (post_id, user_id, body) SELECT post_id, user_id, body FROM comments LIMIT %d", n), "fill_comments")
 	res, err := sqlDB.ExecContext(ctx, q)
 	if err != nil {
 		return total, fmt.Errorf("insert comments: %w", err)
@@ -230,7 +228,7 @@ func insertBatch(ctx context.Context, sqlDB *sql.DB, n int) (int, error) {
 	affected, _ := res.RowsAffected()
 	total += int(affected)
 	// Users
-	q = fmt.Sprintf("INSERT INTO users (name, email) SELECT name, email FROM users LIMIT %d", n)
+	q = WithAction(fmt.Sprintf("INSERT INTO users (name, email) SELECT name, email FROM users LIMIT %d", n), "fill_users")
 	res, err = sqlDB.ExecContext(ctx, q)
 	if err != nil {
 		return total, fmt.Errorf("insert users: %w", err)
@@ -238,7 +236,7 @@ func insertBatch(ctx context.Context, sqlDB *sql.DB, n int) (int, error) {
 	affected, _ = res.RowsAffected()
 	total += int(affected)
 	// Tags
-	q = fmt.Sprintf("INSERT INTO tags (name) SELECT name FROM tags LIMIT %d", n)
+	q = WithAction(fmt.Sprintf("INSERT INTO tags (name) SELECT name FROM tags LIMIT %d", n), "fill_tags")
 	res, err = sqlDB.ExecContext(ctx, q)
 	if err != nil {
 		return total, fmt.Errorf("insert tags: %w", err)
@@ -246,7 +244,7 @@ func insertBatch(ctx context.Context, sqlDB *sql.DB, n int) (int, error) {
 	affected, _ = res.RowsAffected()
 	total += int(affected)
 	// Posts
-	q = fmt.Sprintf(`INSERT INTO posts (user_id, title, body) SELECT user_id, title, CONCAT(body, body) FROM posts LIMIT %d`, n)
+	q = WithAction(fmt.Sprintf(`INSERT INTO posts (user_id, body) SELECT user_id, CONCAT(body, body) FROM posts LIMIT %d`, n), "fill_posts")
 	res, err = sqlDB.ExecContext(ctx, q)
 	if err != nil {
 		return total, fmt.Errorf("insert posts: %w", err)
@@ -261,17 +259,17 @@ func currentDBBytes(ctx context.Context, sqlDB *sql.DB, provider string) (int64,
 	var size int64
 	var err error
 	if provider == "postgres" {
-		err = sqlDB.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&size)
+		err = sqlDB.QueryRowContext(ctx, WithAction("SELECT pg_database_size(current_database())", "db_size")).Scan(&size)
 	} else {
 		var a any
-		_ = sqlDB.QueryRowContext(ctx, "ANALYZE TABLE posts").Scan(&a)
-		_ = sqlDB.QueryRowContext(ctx, "ANALYZE TABLE users").Scan(&a)
-		_ = sqlDB.QueryRowContext(ctx, "ANALYZE TABLE tags").Scan(&a)
-		_ = sqlDB.QueryRowContext(ctx, "ANALYZE TABLE comments").Scan(&a)
-		err = sqlDB.QueryRowContext(ctx, `
+		_ = sqlDB.QueryRowContext(ctx, WithAction("ANALYZE TABLE posts", "db_size")).Scan(&a)
+		_ = sqlDB.QueryRowContext(ctx, WithAction("ANALYZE TABLE users", "db_size")).Scan(&a)
+		_ = sqlDB.QueryRowContext(ctx, WithAction("ANALYZE TABLE tags", "db_size")).Scan(&a)
+		_ = sqlDB.QueryRowContext(ctx, WithAction("ANALYZE TABLE comments", "db_size")).Scan(&a)
+		err = sqlDB.QueryRowContext(ctx, WithAction(`
 			SELECT COALESCE(SUM(data_length + index_length), 0)
 			FROM information_schema.tables
-			WHERE table_schema = DATABASE()`).Scan(&size)
+			WHERE table_schema = DATABASE()`, "db_size")).Scan(&size)
 	}
 	if err != nil {
 		return 0, fmt.Errorf("query db size: %w", err)

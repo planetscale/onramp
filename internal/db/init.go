@@ -48,7 +48,7 @@ func initUsers(ctx context.Context, sqlDB *sql.DB, provider string, n int) (int,
 			fmt.Sprintf("u%d@x.co", seq), // sequential → no B-tree fragmentation on email index
 		)
 	}
-	q := "INSERT INTO users (name, email) VALUES " + valuePlaceholders(provider, n, 2)
+	q := WithAction("INSERT INTO users (name, email) VALUES "+valuePlaceholders(provider, n, 2), "init_users")
 	res, err := sqlDB.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("insert users: %w", err)
@@ -63,7 +63,7 @@ func initTags(ctx context.Context, sqlDB *sql.DB, provider string, n int) (int, 
 	for i := range n {
 		args = append(args, fmt.Sprintf("t%d", base+i)) // sequential → no B-tree fragmentation on name index
 	}
-	q := "INSERT INTO tags (name) VALUES " + valuePlaceholders(provider, n, 1)
+	q := WithAction("INSERT INTO tags (name) VALUES "+valuePlaceholders(provider, n, 1), "init_tags")
 	res, err := sqlDB.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("insert tags: %w", err)
@@ -73,13 +73,13 @@ func initTags(ctx context.Context, sqlDB *sql.DB, provider string, n int) (int, 
 }
 
 func initPosts(ctx context.Context, sqlDB *sql.DB, provider string, n int) (int, error) {
-	args := make([]any, 0, n*3)
+	args := make([]any, 0, n*2)
 	offset := rand.Intn(poolSize)
 	for i := range n {
 		idx := (offset + i) % poolSize
-		args = append(args, rand.Intn(100000), titlePool[idx], bodyPool[idx])
+		args = append(args, rand.Intn(100000), bodyPool[idx])
 	}
-	q := `INSERT INTO posts (user_id, title, body) VALUES ` + valuePlaceholders(provider, n, 3)
+	q := WithAction("INSERT INTO posts (user_id, body) VALUES "+valuePlaceholders(provider, n, 2), "init_posts")
 	res, err := sqlDB.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("insert posts: %w", err)
@@ -94,7 +94,7 @@ func initComments(ctx context.Context, sqlDB *sql.DB, provider string, n int) (i
 	for i := range n {
 		args = append(args, rand.Intn(100000), rand.Intn(100000), commentPool[(offset+i)%poolSize])
 	}
-	q := "INSERT INTO comments (post_id, user_id, body) VALUES " + valuePlaceholders(provider, n, 3)
+	q := WithAction("INSERT INTO comments (post_id, user_id, body) VALUES "+valuePlaceholders(provider, n, 3), "init_comments")
 	res, err := sqlDB.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("insert comments: %w", err)
@@ -115,6 +115,7 @@ func initPostTags(ctx context.Context, sqlDB *sql.DB, provider string, n int) (i
 	} else {
 		q = "INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES " + vals
 	}
+	q = WithAction(q, "init_post_tags")
 	res, err := sqlDB.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("insert post_tags: %w", err)

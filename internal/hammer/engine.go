@@ -12,9 +12,10 @@ import (
 	"text/template"
 	"time"
 
-	"onramp/internal/hammer/htypes"
-
 	"github.com/brianvoe/gofakeit/v6"
+
+	"onramp/internal/db"
+	"onramp/internal/hammer/htypes"
 )
 
 // queryData is the template data available to flow query templates.
@@ -292,6 +293,7 @@ func (e *Engine) userLoop(ctx context.Context, id int, userID int64, flowDelay t
 				log.Printf("[engine] user %d: render query error: %v", id, err)
 				continue
 			}
+			query = db.WithAction(query, "crud")
 			queryType := queryVerb(query)
 			start := time.Now()
 			_, err = e.db.ExecContext(ctx, query)
@@ -371,7 +373,7 @@ func (e *Engine) createUserInDB() (int64, error) {
 	}
 
 	result, err := e.db.Exec(
-		`INSERT INTO users (name, email) VALUES (?, ?)`,
+		`INSERT INTO users (name, email) VALUES (?, ?) /*action='create_user'*/`,
 		name, email,
 	)
 	if err != nil {
