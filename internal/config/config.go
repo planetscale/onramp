@@ -143,7 +143,6 @@ func DefaultSchema(provider string) []string {
 			`CREATE TABLE IF NOT EXISTS posts (
 				id         BIGSERIAL PRIMARY KEY,
 				user_id    BIGINT NOT NULL,
-				title      VARCHAR(255) NOT NULL,
 				body       TEXT,
 				created_at TIMESTAMPTZ DEFAULT NOW()
 			)`,
@@ -196,7 +195,6 @@ func DefaultSchema(provider string) []string {
 		`CREATE TABLE IF NOT EXISTS posts (
 			id         BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			user_id    BIGINT NOT NULL,
-			title      VARCHAR(255) NOT NULL,
 			body       TEXT,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -293,7 +291,7 @@ func DefaultFlows(provider string) []htypes.Flow {
 			Name:   "create_post",
 			Weight: 40,
 			Queries: []string{
-				`INSERT INTO posts (user_id, title, body) VALUES ({{.UserID}}, '{{Sentence 5}}', '{{Sentence 15}}') /*action='new_post'*/`,
+				`INSERT INTO posts (user_id, body) VALUES ({{.UserID}}, '{{Sentence 15}}') /*action='new_post'*/`,
 			},
 		},
 		{

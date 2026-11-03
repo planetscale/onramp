@@ -14,7 +14,7 @@ func DropAllTables(ctx context.Context, sqlDB *sql.DB, provider string) error {
 	switch provider {
 	case "postgres":
 		rows, err := sqlDB.QueryContext(ctx,
-			`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
+			WithAction(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`, "ddl"))
 		if err != nil {
 			return fmt.Errorf("list tables: %w", err)
 		}
@@ -33,20 +33,20 @@ func DropAllTables(ctx context.Context, sqlDB *sql.DB, provider string) error {
 		}
 
 		for _, t := range tables {
-			if _, err := sqlDB.ExecContext(ctx, `DROP TABLE IF EXISTS "`+t+`" CASCADE`); err != nil {
+			if _, err := sqlDB.ExecContext(ctx, WithAction(`DROP TABLE IF EXISTS "`+t+`" CASCADE`, "ddl")); err != nil {
 				return fmt.Errorf("drop table %q: %w", t, err)
 			}
 			fmt.Printf("  dropped %s\n", t)
 		}
 
 	default: // mysql / vitess
-		if _, err := sqlDB.ExecContext(ctx, `SET FOREIGN_KEY_CHECKS = 0`); err != nil {
+		if _, err := sqlDB.ExecContext(ctx, WithAction(`SET FOREIGN_KEY_CHECKS = 0`, "ddl")); err != nil {
 			return fmt.Errorf("disable FK checks: %w", err)
 		}
 
 		rows, err := sqlDB.QueryContext(ctx,
-			`SELECT table_name FROM information_schema.tables
-			 WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'`)
+			WithAction(`SELECT table_name FROM information_schema.tables
+			 WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'`, "ddl"))
 		if err != nil {
 			return fmt.Errorf("list tables: %w", err)
 		}
@@ -65,13 +65,13 @@ func DropAllTables(ctx context.Context, sqlDB *sql.DB, provider string) error {
 		}
 
 		for _, t := range tables {
-			if _, err := sqlDB.ExecContext(ctx, `DROP TABLE IF EXISTS `+"`"+t+"`"); err != nil {
+			if _, err := sqlDB.ExecContext(ctx, WithAction(`DROP TABLE IF EXISTS `+"`"+t+"`", "ddl")); err != nil {
 				return fmt.Errorf("drop table %q: %w", t, err)
 			}
 			fmt.Printf("  dropped %s\n", t)
 		}
 
-		if _, err := sqlDB.ExecContext(ctx, `SET FOREIGN_KEY_CHECKS = 1`); err != nil {
+		if _, err := sqlDB.ExecContext(ctx, WithAction(`SET FOREIGN_KEY_CHECKS = 1`, "ddl")); err != nil {
 			return fmt.Errorf("re-enable FK checks: %w", err)
 		}
 	}
@@ -81,7 +81,7 @@ func DropAllTables(ctx context.Context, sqlDB *sql.DB, provider string) error {
 // ApplySchema executes each DDL statement in stmts against the database.
 func ApplySchema(ctx context.Context, sqlDB *sql.DB, stmts []string) error {
 	for _, stmt := range stmts {
-		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
+		if _, err := sqlDB.ExecContext(ctx, WithAction(stmt, "ddl")); err != nil {
 			return fmt.Errorf("apply schema statement: %w", err)
 		}
 	}
