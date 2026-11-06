@@ -278,7 +278,13 @@ func DefaultTCRules() []pscale.TrafficControlRule {
 	}
 }
 
-// DefaultFlows returns three hard-coded default flows.
+// activityMetadata matches the shape Poaster's seeder writes to activity.metadata.
+const activityMetadata = `jsonb_build_object('client', (ARRAY['web','ios','android','api'])[1 + floor(random() * 4)::int], 'latency_ms', (random() * 2000)::int)`
+
+// engagePostWindow is how many of the newest posts engage_post picks from.
+const engagePostWindow = 50
+
+// DefaultFlows returns the hard-coded default flows for the provider.
 func DefaultFlows(provider string) []htypes.Flow {
 	randomFunc := "RANDOM()"
 	if provider != "postgres" {
@@ -286,24 +292,35 @@ func DefaultFlows(provider string) []htypes.Flow {
 	}
 	//
 
+	postQuery := `INSERT INTO posts (user_id, body) VALUES ({{.UserID}}, '{{Sentence 15}}') /*action='new_post'*/`
+	// INSERT ... SELECT is a no-op when posts is empty, avoiding a NULL post_id error.
+	commentQuery := fmt.Sprintf(
+		`INSERT INTO comments (post_id, user_id, body) SELECT id, {{.UserID}}, '{{Sentence 8}}' FROM posts ORDER BY %s LIMIT 1 /*action='new_comment'*/`,
+		randomFunc,
+	)
+	if provider == "postgres" {
+		// Only Postgres has the `activity` table. Log the event in the same
+		// statement so every new post and comment shows up as post activity.
+		postQuery = fmt.Sprintf(
+			`WITH p AS (INSERT INTO posts (user_id, body) VALUES ({{.UserID}}, '{{Sentence 15}}') RETURNING id) INSERT INTO activity (user_id, action, target_type, target_id, metadata) SELECT {{.UserID}}, 'post', 'post', id, %s FROM p /*action='new_post'*/`,
+			activityMetadata,
+		)
+		commentQuery = fmt.Sprintf(
+			`WITH c AS (INSERT INTO comments (post_id, user_id, body) SELECT id, {{.UserID}}, '{{Sentence 8}}' FROM posts ORDER BY RANDOM() LIMIT 1 RETURNING post_id) INSERT INTO activity (user_id, action, target_type, target_id, metadata) SELECT {{.UserID}}, 'comment', 'post', post_id, %s FROM c /*action='new_comment'*/`,
+			activityMetadata,
+		)
+	}
+
 	flows := []htypes.Flow{
 		{
-			Name:   "create_post",
-			Weight: 40,
-			Queries: []string{
-				`INSERT INTO posts (user_id, body) VALUES ({{.UserID}}, '{{Sentence 15}}') /*action='new_post'*/`,
-			},
+			Name:    "create_post",
+			Weight:  40,
+			Queries: []string{postQuery},
 		},
 		{
-			Name:   "create_comment",
-			Weight: 40,
-			Queries: []string{
-				// INSERT ... SELECT is a no-op when posts is empty, avoiding a NULL post_id error.
-				fmt.Sprintf(
-					`INSERT INTO comments (post_id, user_id, body) SELECT id, {{.UserID}}, '{{Sentence 8}}' FROM posts ORDER BY %s LIMIT 1 /*action='new_comment'*/`,
-					randomFunc,
-				),
-			},
+			Name:    "create_comment",
+			Weight:  40,
+			Queries: []string{commentQuery},
 		},
 		{
 			Name:   "delete_comment",
@@ -337,6 +354,18 @@ func DefaultFlows(provider string) []htypes.Flow {
 	}
 
 	if provider == "postgres" {
+		flows = append(flows, htypes.Flow{
+			Name:   "engage_post",
+			Weight: 30,
+			Queries: []string{
+				// Pick from the newest posts so fresh posts accumulate activity.
+				fmt.Sprintf(
+					`INSERT INTO activity (user_id, action, target_type, target_id, metadata) SELECT {{.UserID}}, (ARRAY['like','repost','view'])[1 + floor(random() * 3)::int], 'post', id, %s FROM (SELECT id FROM posts ORDER BY id DESC LIMIT %d) recent ORDER BY RANDOM() LIMIT 1 /*action='engage_post'*/`,
+					activityMetadata,
+					engagePostWindow,
+				),
+			},
+		})
 		flows = append(flows, htypes.Flow{
 			Name:   "create_post_tag",
 			Weight: 5,
